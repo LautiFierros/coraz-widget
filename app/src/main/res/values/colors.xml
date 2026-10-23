@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Paleta del dashboard CORAZ -->
+<resources>
+    <color name="bg">#F215130E</color>
+    <color name="card">#FF201C14</color>
+    <color name="border">#FF332C1D</color>
+    <color name="text">#FFF2EDE1</color>
+    <color name="muted">#FF948B76</color>
+    <color name="amber">#FFE8890C</color>
+    <color name="red">#FFC1503E</color>
+    <color name="green">#FF7CA25C</color>
+</resources>

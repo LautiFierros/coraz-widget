@@ -1,0 +1,46 @@
+plugins {
+    id 'com.android.application'
+}
+
+// versionCode = número de corrida de GitHub Actions, así cada build instala como actualización.
+def vc = (System.getenv("VERSION_CODE") ?: "1").toInteger()
+
+android {
+    namespace 'ar.coraz.widget'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'ar.coraz.widget'
+        minSdk 26
+        targetSdk 35
+        versionCode vc
+        versionName "1.0.${vc}"
+    }
+
+    // Firma: si el workflow restauró la llave fija (secreto KEYSTORE_B64), se usa esa y cada build
+    // se instala encima de la anterior. Si no, se firma con la llave debug del runner (cambia en cada
+    // build: para actualizar hay que desinstalar antes).
+    def ks = file("coraz-widget.jks")
+    signingConfigs {
+        if (ks.exists()) {
+            release {
+                storeFile ks
+                storePassword System.getenv("KS_PASS") ?: "coraz-widget"
+                keyAlias "coraz"
+                keyPassword System.getenv("KS_PASS") ?: "coraz-widget"
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig ks.exists() ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

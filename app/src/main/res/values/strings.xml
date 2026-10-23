@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">CORAZ Ventas</string>
+    <string name="widget_name">CORAZ · Ventas de hoy</string>
+    <string name="widget_desc">Ventas del día de Mercado Libre, deslizables, como el panel del dashboard.</string>
+</resources>
