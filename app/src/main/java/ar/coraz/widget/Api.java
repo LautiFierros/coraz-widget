@@ -92,6 +92,28 @@ final class Api {
         return out.toString(StandardCharsets.UTF_8.name());
     }
 
+    // ---------- diagnóstico (últimos eventos, visibles en la app) ----------
+    private static final String K_DIAG = "diag";
+
+    static synchronized void log(Context c, String evento) {
+        String previo = prefs(c).getString(K_DIAG, "");
+        String linea = hora(System.currentTimeMillis()) + " " + evento;
+        String nuevo = linea + (previo.isEmpty() ? "" : "\n" + previo);
+        if (nuevo.length() > 3000) nuevo = nuevo.substring(0, 3000);
+        prefs(c).edit().putString(K_DIAG, nuevo).commit();
+    }
+
+    static void log(Context c, String donde, Throwable t) {
+        StringBuilder sb = new StringBuilder("✗ ").append(donde).append(": ").append(t);
+        StackTraceElement[] st = t.getStackTrace();
+        for (int i = 0; i < Math.min(4, st.length); i++) sb.append("\n    at ").append(st[i]);
+        if (t.getCause() != null) sb.append("\n    causa: ").append(t.getCause());
+        log(c, sb.toString());
+    }
+
+    static String diag(Context c) { return prefs(c).getString(K_DIAG, "(sin eventos)"); }
+    static void limpiarDiag(Context c) { prefs(c).edit().remove(K_DIAG).apply(); }
+
     // ---------- formato ----------
     private static final DecimalFormat ENTERO;
     static {

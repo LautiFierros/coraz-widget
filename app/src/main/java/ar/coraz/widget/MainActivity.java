@@ -26,6 +26,7 @@ public class MainActivity extends Activity {
 
     private EditText input;
     private TextView estado;
+    private TextView diag;
 
     @Override
     protected void onCreate(Bundle b) {
@@ -76,7 +77,21 @@ public class MainActivity extends Activity {
         col.addView(boton("Abrir dashboard", false, v ->
                 startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(Api.URL_DASHBOARD)))));
 
+        // ---------- Diagnóstico ----------
+        col.addView(espacio(24));
+        String version = "";
+        try { version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName; } catch (Exception ignored) {}
+        col.addView(texto("DIAGNÓSTICO · v" + version, 12, R.color.muted, true));
+        col.addView(boton("Actualizar widget ahora", false, v -> forzarWidget()));
+        diag = texto("", 11, R.color.muted, true);
+        diag.setLetterSpacing(0f);
+        diag.setTextIsSelectable(true);
+        diag.setPadding(0, dp(10), 0, dp(10));
+        col.addView(diag);
+        col.addView(boton("Limpiar diagnóstico", false, v -> { Api.limpiarDiag(this); refrescarDiag(); }));
+
         setContentView(scroll);
+        refrescarDiag();
         if (!Api.token(this).isEmpty()) mostrarCache();
     }
 
@@ -88,6 +103,7 @@ public class MainActivity extends Activity {
         new Thread(() -> {
             String err = Api.refresh(getApplicationContext());
             runOnUiThread(() -> {
+                refrescarDiag();
                 if (err != null) {
                     estado.setText("✗ " + err);
                     estado.setTextColor(getColor(R.color.red));
@@ -98,6 +114,39 @@ public class MainActivity extends Activity {
                 }
             });
         }).start();
+    }
+
+    /** Descarga y redibuja el widget desde la app (primer plano), mostrando qué pasa en cada paso. */
+    private void forzarWidget() {
+        Api.log(this, "forzado desde la app");
+        refrescarDiag();
+        new Thread(() -> {
+            String err = Api.refresh(getApplicationContext());
+            runOnUiThread(() -> {
+                Api.log(this, err == null ? "datos OK (app)" : "datos ERROR (app): " + err);
+                try {
+                    String r = VentasWidgetProvider.renderTodos(this, false);
+                    AppWidgetManager m = AppWidgetManager.getInstance(this);
+                    m.notifyAppWidgetViewDataChanged(
+                            m.getAppWidgetIds(new ComponentName(this, VentasWidgetProvider.class)), R.id.lista);
+                    Api.log(this, "forzado: " + r);
+                } catch (Throwable t) {
+                    Api.log(this, "forzado", t);
+                }
+                refrescarDiag();
+                mostrarCache();
+            });
+        }).start();
+    }
+
+    private void refrescarDiag() {
+        if (diag != null) diag.setText(Api.diag(this));
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        refrescarDiag();
     }
 
     private void mostrarCache() {

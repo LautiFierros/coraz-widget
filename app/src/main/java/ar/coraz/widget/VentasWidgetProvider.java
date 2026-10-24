@@ -26,7 +26,8 @@ public class VentasWidgetProvider extends AppWidgetProvider {
 
     @Override
     public void onUpdate(Context context, AppWidgetManager manager, int[] ids) {
-        programarAlarma(context);
+        Api.log(context, "onUpdate ids=" + java.util.Arrays.toString(ids));
+        try { programarAlarma(context); } catch (Throwable t) { Api.log(context, "alarma", t); }
         renderTodos(context, false);
         refrescarAsync(context, goAsync());
     }
@@ -34,11 +35,16 @@ public class VentasWidgetProvider extends AppWidgetProvider {
     @Override
     public void onReceive(Context context, Intent intent) {
         if (ACTION_REFRESH.equals(intent.getAction())) {
+            Api.log(context, "refresh pedido (⟳/alarma/app)");
             renderTodos(context, true);
             refrescarAsync(context, goAsync());
             return;
         }
-        super.onReceive(context, intent);
+        try {
+            super.onReceive(context, intent);
+        } catch (Throwable t) {
+            Api.log(context, "onReceive " + intent.getAction(), t);
+        }
     }
 
     @Override
@@ -61,10 +67,13 @@ public class VentasWidgetProvider extends AppWidgetProvider {
         final Context app = context.getApplicationContext();
         new Thread(() -> {
             try {
-                Api.refresh(app);
+                String err = Api.refresh(app);
+                Api.log(app, err == null ? "datos OK" : "datos ERROR: " + err);
                 renderTodos(app, false);
                 AppWidgetManager m = AppWidgetManager.getInstance(app);
                 m.notifyAppWidgetViewDataChanged(ids(app), R.id.lista);
+            } catch (Throwable t) {
+                Api.log(app, "refresco", t);
             } finally {
                 if (pr != null) pr.finish();
             }
@@ -89,39 +98,60 @@ public class VentasWidgetProvider extends AppWidgetProvider {
                 .getAppWidgetIds(new ComponentName(context, VentasWidgetProvider.class));
     }
 
-    static void renderTodos(Context context, boolean actualizando) {
+    /** Redibuja todos los widgets. Devuelve un resumen para el diagnóstico. */
+    static String renderTodos(Context context, boolean actualizando) {
         AppWidgetManager m = AppWidgetManager.getInstance(context);
-        for (int id : ids(context)) {
+        int[] ids = ids(context);
+        if (ids.length == 0) {
+            Api.log(context, "render: no hay widgets registrados para esta app");
+            return "0 widgets registrados";
+        }
+        for (int id : ids) {
             RemoteViews rv;
             try {
                 rv = render(context, id, actualizando);
-            } catch (Exception e) {
+            } catch (Throwable e) {
+                Api.log(context, "render id=" + id, e);
                 // Nunca dejar el widget en blanco: mostrar el error para poder diagnosticarlo.
                 rv = new RemoteViews(context.getPackageName(), R.layout.widget_ventas);
                 rv.setTextViewText(R.id.stats, "Error del widget: " + e.getClass().getSimpleName()
                         + (e.getMessage() != null ? " · " + e.getMessage() : ""));
             }
-            m.updateAppWidget(id, rv);
+            try {
+                m.updateAppWidget(id, rv);
+            } catch (Throwable e) {
+                Api.log(context, "updateAppWidget id=" + id, e);
+            }
+            try {
+                m.partiallyUpdateAppWidget(id, renderLista(context, id));
+            } catch (Throwable e) {
+                Api.log(context, "lista id=" + id, e);
+            }
         }
+        if (!actualizando) Api.log(context, "render OK ids=" + java.util.Arrays.toString(ids));
+        return ids.length + " widget(s): " + java.util.Arrays.toString(ids);
+    }
+
+    /** Segunda pasada: solo la lista deslizable (se aplica aparte para que un problema acá no tape los números). */
+    private static RemoteViews renderLista(Context c, int widgetId) {
+        RemoteViews rv = new RemoteViews(c.getPackageName(), R.layout.widget_ventas);
+        Intent svc = new Intent(c, VentasWidgetService.class);
+        svc.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId);
+        svc.setData(Uri.parse(svc.toUri(Intent.URI_INTENT_SCHEME)));
+        rv.setRemoteAdapter(R.id.lista, svc);
+        rv.setEmptyView(R.id.lista, R.id.vacio);
+        // Tocar una venta → abre la orden en ML (cada fila completa la URL).
+        // Intent EXPLÍCITO a AbrirLinkActivity: Android 14+ no permite plantillas mutables implícitas.
+        PendingIntent abrirLink = PendingIntent.getActivity(c, 2, new Intent(c, AbrirLinkActivity.class),
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
+        rv.setPendingIntentTemplate(R.id.lista, abrirLink);
+        return rv;
     }
 
     private static RemoteViews render(Context c, int widgetId, boolean actualizando) {
         RemoteViews rv = new RemoteViews(c.getPackageName(), R.layout.widget_ventas);
         int muted = c.getColor(R.color.muted), green = c.getColor(R.color.green),
                 red = c.getColor(R.color.red), amber = c.getColor(R.color.amber);
-
-        // Lista deslizable
-        Intent svc = new Intent(c, VentasWidgetService.class);
-        svc.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId);
-        svc.setData(Uri.parse(svc.toUri(Intent.URI_INTENT_SCHEME)));
-        rv.setRemoteAdapter(R.id.lista, svc);
-        rv.setEmptyView(R.id.lista, R.id.vacio);
-
-        // Tocar una venta → abre la orden en ML (cada fila completa la URL).
-        // Intent EXPLÍCITO a AbrirLinkActivity: Android 14+ no permite plantillas mutables implícitas.
-        PendingIntent abrirLink = PendingIntent.getActivity(c, 2, new Intent(c, AbrirLinkActivity.class),
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
-        rv.setPendingIntentTemplate(R.id.lista, abrirLink);
 
         // ⟳
         rv.setOnClickPendingIntent(R.id.btn_refresh, PendingIntent.getBroadcast(c, 3,
