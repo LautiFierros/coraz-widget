@@ -91,7 +91,18 @@ public class VentasWidgetProvider extends AppWidgetProvider {
 
     static void renderTodos(Context context, boolean actualizando) {
         AppWidgetManager m = AppWidgetManager.getInstance(context);
-        for (int id : ids(context)) m.updateAppWidget(id, render(context, id, actualizando));
+        for (int id : ids(context)) {
+            RemoteViews rv;
+            try {
+                rv = render(context, id, actualizando);
+            } catch (Exception e) {
+                // Nunca dejar el widget en blanco: mostrar el error para poder diagnosticarlo.
+                rv = new RemoteViews(context.getPackageName(), R.layout.widget_ventas);
+                rv.setTextViewText(R.id.stats, "Error del widget: " + e.getClass().getSimpleName()
+                        + (e.getMessage() != null ? " · " + e.getMessage() : ""));
+            }
+            m.updateAppWidget(id, rv);
+        }
     }
 
     private static RemoteViews render(Context c, int widgetId, boolean actualizando) {
@@ -106,8 +117,9 @@ public class VentasWidgetProvider extends AppWidgetProvider {
         rv.setRemoteAdapter(R.id.lista, svc);
         rv.setEmptyView(R.id.lista, R.id.vacio);
 
-        // Tocar una venta → abre la orden en ML (cada fila completa la URL)
-        PendingIntent abrirLink = PendingIntent.getActivity(c, 2, new Intent(Intent.ACTION_VIEW),
+        // Tocar una venta → abre la orden en ML (cada fila completa la URL).
+        // Intent EXPLÍCITO a AbrirLinkActivity: Android 14+ no permite plantillas mutables implícitas.
+        PendingIntent abrirLink = PendingIntent.getActivity(c, 2, new Intent(c, AbrirLinkActivity.class),
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
         rv.setPendingIntentTemplate(R.id.lista, abrirLink);
 
